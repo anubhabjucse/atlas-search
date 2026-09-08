@@ -24,7 +24,8 @@ compile_commands.json
 api/database_adapter/data/news/text/
 
 # Local generated search indexes
-data/index/
+data/index/*
+!data/index/news.atlas
 
 # IDE / OS files
 .vscode/
