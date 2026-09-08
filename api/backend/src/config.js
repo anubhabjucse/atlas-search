@@ -16,7 +16,15 @@ if (!process.env.MONGODB_URI) {
 
 const config = {
     port:
-        Number(process.env.ATLAS_API_PORT || 3000),
+        Number(
+            process.env.PORT ||
+            process.env.ATLAS_API_PORT ||
+            3000
+        ),
+
+    host:
+        process.env.ATLAS_API_HOST ||
+        "0.0.0.0",
 
     mongodbUri:
         process.env.MONGODB_URI,
@@ -25,7 +33,7 @@ const config = {
         path.resolve(
             PROJECT_ROOT,
             process.env.ATLAS_WORKER_PATH ||
-                "./build/atlas_search_worker.exe"
+                "./build/atlas_search_worker"
         ),
 
     atlasIndex:

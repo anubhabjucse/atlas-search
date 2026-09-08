@@ -1,0 +1,44 @@
+# Git
+.git/
+.gitignore
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Node.js dependencies
+node_modules/
+**/node_modules/
+
+# Local C/C++ build artifacts
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Local generated corpus
+api/database_adapter/data/news/text/
+
+# Local generated search indexes
+data/index/
+
+# IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs / temporary files
+*.log
+*.tmp
+*.temp
+
+# Coverage
+coverage/
+*.gcda
+*.gcno
+*.gcov

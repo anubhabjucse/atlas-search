@@ -3,6 +3,7 @@ const express = require("express");
 const {
     mongodbUri,
     port,
+    host,
     atlasWorker,
     atlasIndex,
     atlasRuntimePath
@@ -195,6 +196,7 @@ async function start() {
 
     app.listen(
         port,
+        host,
         () => {
             console.log(
                 `Atlas API listening on http://localhost:${port}`
