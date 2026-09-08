@@ -184,7 +184,7 @@ add_custom_target(
     COMMAND
         $<TARGET_FILE:retrieval_benchmark>
         --dataset-path
-        "${CMAKE_CURRENT_SOURCE_DIR}/database_adapter/data/news/News_Category_Dataset_v3.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/api/database_adapter/data/news/News_Category_Dataset_v3.json"
         --documents
         100000,210000
         --blocks
