@@ -1,0 +1,1 @@
+Distributed systems use consensus algorithms.

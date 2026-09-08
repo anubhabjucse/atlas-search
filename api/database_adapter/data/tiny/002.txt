@@ -1,0 +1,1 @@
+Databases use transactions and consensus.

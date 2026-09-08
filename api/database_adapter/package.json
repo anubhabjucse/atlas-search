@@ -1,0 +1,14 @@
+{
+  "name": "@atlas/database-adapter",
+  "version": "1.0.0",
+  "description": "Atlas database abstraction and MongoDB adapter",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node tests/database_adapter_test.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "mongodb": "^7.6.0"
+  }
+}

@@ -1,0 +1,214 @@
+ATLAS V2.4 RETRIEVAL BENCHMARK
+===============================
+
+Dataset: D:/ANUBHAB/Documents/atlas/database_adapter/data/news/News_Category_Dataset_v3.json
+Output: D:/ANUBHAB/Documents/atlas/benchmark.txt
+Iterations: 20
+Warmup: 5
+
+This benchmark treats each JSON 'headline' field as one
+logical Atlas document. No individual .txt files are created.
+
+For every selected corpus size, the benchmark constructs
+queries from the same corpus using actual document frequency.
+The exact same query workload is then run against Exhaustive,
+WAND, and Block-Max WAND.
+
+Memory is process working-set memory and is therefore not an
+algorithm-specific allocation measurement.
+
+
+====================================================================
+CORPUS SIZE: 100000 DOCUMENTS
+BLOCK SIZE: 64
+====================================================================
+Documents loaded: 100000
+Vocabulary size: 41740
+Average document length: 10.477
+Benchmark queries: 42
+
+QUERY WORKLOAD
+--------------
+high_df_0 [high_df] : to
+high_df_1 [high_df] : the
+medium_df_2 [medium_df] : in
+medium_df_3 [medium_df] : of
+medium_df_4 [medium_df] : a
+medium_df_5 [medium_df] : for
+medium_df_6 [medium_df] : trump
+medium_df_7 [medium_df] : and
+medium_df_8 [medium_df] : on
+medium_df_9 [medium_df] : is
+low_df_10 [low_df] : donald
+low_df_11 [low_df] : new
+low_df_12 [low_df] : this
+low_df_13 [low_df] : about
+low_df_14 [low_df] : after
+low_df_15 [low_df] : from
+low_df_16 [low_df] : are
+low_df_17 [low_df] : you
+rare_df_18 [rare_df] : 0.075
+rare_df_19 [rare_df] : 0.5k
+rare_df_20 [rare_df] : 0.7
+rare_df_21 [rare_df] : 00s
+rare_df_22 [rare_df] : 06
+rare_df_23 [rare_df] : 06290
+rare_df_24 [rare_df] : 08
+rare_df_25 [rare_df] : 1,000th
+high_df_2term_0 [high_df] : to the
+medium_df_2term_0 [medium_df] : in of
+medium_df_2term_1 [medium_df] : a for
+medium_df_2term_2 [medium_df] : trump and
+medium_df_2term_3 [medium_df] : on is
+medium_df_4term [medium_df] : in of a for
+low_df_2term_0 [low_df] : donald new
+low_df_2term_1 [low_df] : this about
+low_df_2term_2 [low_df] : after from
+low_df_2term_3 [low_df] : are you
+low_df_4term [low_df] : donald new this about
+rare_df_2term_0 [rare_df] : 0.075 0.5k
+rare_df_2term_1 [rare_df] : 0.7 00s
+rare_df_2term_2 [rare_df] : 06 06290
+rare_df_2term_3 [rare_df] : 08 1,000th
+rare_df_4term [rare_df] : 0.075 0.5k 0.7 00s
+
+CORRECTNESS CHECK
+-----------------
+K=1 : BM25 PASS, TF-IDF PASS
+K=10 : BM25 PASS, TF-IDF PASS
+K=50 : BM25 PASS, TF-IDF PASS
+
+PERFORMANCE RESULTS
+-------------------
+
+Ranking model: BM25
+
+K=1
+Exhaustive | mean_us=28026.43 | p50_us=15722.85 | p95_us=95138.02 | p99_us=203544.28 | throughput_qps=35.68 | cpu_seconds=23.54 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33435648
+WAND | mean_us=16290.90 | p50_us=10147.45 | p95_us=57563.81 | p99_us=89108.92 | throughput_qps=61.37 | cpu_seconds=13.69 | documents_scored=214447 | postings_visited=360614 | blocks_skipped=0 | memory_bytes=33435648
+Block-Max WAND | mean_us=19359.26 | p50_us=8140.40 | p95_us=58187.83 | p99_us=187699.25 | throughput_qps=51.65 | cpu_seconds=16.26 | documents_scored=143173 | postings_visited=286896 | blocks_skipped=1205 | memory_bytes=33435648
+
+K=10
+Exhaustive | mean_us=27825.85 | p50_us=16006.25 | p95_us=95371.45 | p99_us=207429.21 | throughput_qps=35.93 | cpu_seconds=23.38 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33435648
+WAND | mean_us=18799.63 | p50_us=11553.70 | p95_us=57166.92 | p99_us=94909.32 | throughput_qps=53.18 | cpu_seconds=15.79 | documents_scored=250538 | postings_visited=379851 | blocks_skipped=0 | memory_bytes=33435648
+Block-Max WAND | mean_us=25498.34 | p50_us=13286.80 | p95_us=68790.96 | p99_us=201805.46 | throughput_qps=39.21 | cpu_seconds=21.42 | documents_scored=215302 | postings_visited=344548 | blocks_skipped=580 | memory_bytes=33435648
+
+K=50
+Exhaustive | mean_us=27246.94 | p50_us=14831.10 | p95_us=90779.47 | p99_us=203234.20 | throughput_qps=36.70 | cpu_seconds=22.89 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33435648
+WAND | mean_us=22142.32 | p50_us=18059.35 | p95_us=58129.14 | p99_us=98725.88 | throughput_qps=45.15 | cpu_seconds=18.60 | documents_scored=297506 | postings_visited=400697 | blocks_skipped=0 | memory_bytes=33435648
+Block-Max WAND | mean_us=30238.14 | p50_us=14709.15 | p95_us=93432.43 | p99_us=216525.92 | throughput_qps=33.07 | cpu_seconds=25.40 | documents_scored=280630 | postings_visited=383825 | blocks_skipped=288 | memory_bytes=33435648
+
+Ranking model: TF-IDF
+
+K=1
+Exhaustive | mean_us=24053.09 | p50_us=11784.70 | p95_us=88084.14 | p99_us=196216.81 | throughput_qps=41.57 | cpu_seconds=20.21 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33435648
+WAND | mean_us=16887.83 | p50_us=8109.70 | p95_us=55433.69 | p99_us=89372.32 | throughput_qps=59.21 | cpu_seconds=14.19 | documents_scored=265918 | postings_visited=384624 | blocks_skipped=0 | memory_bytes=33435648
+Block-Max WAND | mean_us=11796.67 | p50_us=3323.75 | p95_us=43602.78 | p99_us=171532.13 | throughput_qps=84.76 | cpu_seconds=9.91 | documents_scored=78675 | postings_visited=162749 | blocks_skipped=3746 | memory_bytes=33435648
+
+K=10
+Exhaustive | mean_us=23526.40 | p50_us=11735.70 | p95_us=79669.53 | p99_us=194473.77 | throughput_qps=42.50 | cpu_seconds=19.76 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33435648
+WAND | mean_us=19562.27 | p50_us=12718.00 | p95_us=58171.43 | p99_us=110069.77 | throughput_qps=51.11 | cpu_seconds=16.43 | documents_scored=296234 | postings_visited=399518 | blocks_skipped=0 | memory_bytes=33435648
+Block-Max WAND | mean_us=22867.75 | p50_us=11444.30 | p95_us=88244.71 | p99_us=212038.19 | throughput_qps=43.72 | cpu_seconds=19.21 | documents_scored=204237 | postings_visited=297374 | blocks_skipped=1616 | memory_bytes=33435648
+
+K=50
+Exhaustive | mean_us=23517.02 | p50_us=12219.55 | p95_us=87483.36 | p99_us=185735.81 | throughput_qps=42.52 | cpu_seconds=19.76 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33435648
+WAND | mean_us=24016.04 | p50_us=13634.90 | p95_us=72743.91 | p99_us=169481.22 | throughput_qps=41.63 | cpu_seconds=20.18 | documents_scored=345235 | postings_visited=420123 | blocks_skipped=0 | memory_bytes=33435648
+Block-Max WAND | mean_us=30156.21 | p50_us=17058.80 | p95_us=96934.64 | p99_us=264088.89 | throughput_qps=33.16 | cpu_seconds=25.33 | documents_scored=302434 | postings_visited=374341 | blocks_skipped=729 | memory_bytes=33435648
+
+
+====================================================================
+CORPUS SIZE: 100000 DOCUMENTS
+BLOCK SIZE: 128
+====================================================================
+Documents loaded: 100000
+Vocabulary size: 41740
+Average document length: 10.477
+Benchmark queries: 42
+
+QUERY WORKLOAD
+--------------
+high_df_0 [high_df] : to
+high_df_1 [high_df] : the
+medium_df_2 [medium_df] : in
+medium_df_3 [medium_df] : of
+medium_df_4 [medium_df] : a
+medium_df_5 [medium_df] : for
+medium_df_6 [medium_df] : trump
+medium_df_7 [medium_df] : and
+medium_df_8 [medium_df] : on
+medium_df_9 [medium_df] : is
+low_df_10 [low_df] : donald
+low_df_11 [low_df] : new
+low_df_12 [low_df] : this
+low_df_13 [low_df] : about
+low_df_14 [low_df] : after
+low_df_15 [low_df] : from
+low_df_16 [low_df] : are
+low_df_17 [low_df] : you
+rare_df_18 [rare_df] : 0.075
+rare_df_19 [rare_df] : 0.5k
+rare_df_20 [rare_df] : 0.7
+rare_df_21 [rare_df] : 00s
+rare_df_22 [rare_df] : 06
+rare_df_23 [rare_df] : 06290
+rare_df_24 [rare_df] : 08
+rare_df_25 [rare_df] : 1,000th
+high_df_2term_0 [high_df] : to the
+medium_df_2term_0 [medium_df] : in of
+medium_df_2term_1 [medium_df] : a for
+medium_df_2term_2 [medium_df] : trump and
+medium_df_2term_3 [medium_df] : on is
+medium_df_4term [medium_df] : in of a for
+low_df_2term_0 [low_df] : donald new
+low_df_2term_1 [low_df] : this about
+low_df_2term_2 [low_df] : after from
+low_df_2term_3 [low_df] : are you
+low_df_4term [low_df] : donald new this about
+rare_df_2term_0 [rare_df] : 0.075 0.5k
+rare_df_2term_1 [rare_df] : 0.7 00s
+rare_df_2term_2 [rare_df] : 06 06290
+rare_df_2term_3 [rare_df] : 08 1,000th
+rare_df_4term [rare_df] : 0.075 0.5k 0.7 00s
+
+CORRECTNESS CHECK
+-----------------
+K=1 : BM25 PASS, TF-IDF PASS
+K=10 : BM25 PASS, TF-IDF PASS
+K=50 : BM25 PASS, TF-IDF PASS
+
+PERFORMANCE RESULTS
+-------------------
+
+Ranking model: BM25
+
+K=1
+Exhaustive | mean_us=28483.64 | p50_us=15341.65 | p95_us=94421.65 | p99_us=206314.93 | throughput_qps=35.10 | cpu_seconds=23.93 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33206272
+WAND | mean_us=16435.51 | p50_us=10147.70 | p95_us=57842.21 | p99_us=92578.68 | throughput_qps=60.83 | cpu_seconds=13.81 | documents_scored=214447 | postings_visited=360614 | blocks_skipped=0 | memory_bytes=33206272
+Block-Max WAND | mean_us=20977.95 | p50_us=10318.85 | p95_us=70193.87 | p99_us=182817.01 | throughput_qps=47.66 | cpu_seconds=17.62 | documents_scored=182999 | postings_visited=328922 | blocks_skipped=278 | memory_bytes=33206272
+
+K=10
+Exhaustive | mean_us=27369.84 | p50_us=15293.75 | p95_us=94569.69 | p99_us=200669.13 | throughput_qps=36.53 | cpu_seconds=22.99 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33206272
+WAND | mean_us=19067.47 | p50_us=11605.00 | p95_us=57541.91 | p99_us=97334.50 | throughput_qps=52.44 | cpu_seconds=16.02 | documents_scored=250538 | postings_visited=379851 | blocks_skipped=0 | memory_bytes=33206272
+Block-Max WAND | mean_us=28374.47 | p50_us=14834.45 | p95_us=76413.76 | p99_us=217349.81 | throughput_qps=35.24 | cpu_seconds=23.84 | documents_scored=238172 | postings_visited=367487 | blocks_skipped=118 | memory_bytes=33206272
+
+K=50
+Exhaustive | mean_us=27689.41 | p50_us=15108.45 | p95_us=97586.80 | p99_us=202131.19 | throughput_qps=36.11 | cpu_seconds=23.26 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33206272
+WAND | mean_us=22165.31 | p50_us=17899.65 | p95_us=58214.71 | p99_us=99854.49 | throughput_qps=45.11 | cpu_seconds=18.62 | documents_scored=297506 | postings_visited=400697 | blocks_skipped=0 | memory_bytes=33206272
+Block-Max WAND | mean_us=30883.50 | p50_us=20058.45 | p95_us=89873.02 | p99_us=195669.40 | throughput_qps=32.38 | cpu_seconds=25.94 | documents_scored=292613 | postings_visited=395808 | blocks_skipped=58 | memory_bytes=33206272
+
+Ranking model: TF-IDF
+
+K=1
+Exhaustive | mean_us=23573.46 | p50_us=11466.75 | p95_us=81158.10 | p99_us=186909.02 | throughput_qps=42.42 | cpu_seconds=19.80 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33206272
+WAND | mean_us=17058.78 | p50_us=8499.35 | p95_us=60518.64 | p99_us=88864.77 | throughput_qps=58.61 | cpu_seconds=14.33 | documents_scored=265918 | postings_visited=384624 | blocks_skipped=0 | memory_bytes=33206272
+Block-Max WAND | mean_us=14239.02 | p50_us=4655.85 | p95_us=50111.38 | p99_us=165387.92 | throughput_qps=70.22 | cpu_seconds=11.96 | documents_scored=107988 | postings_visited=204378 | blocks_skipped=1492 | memory_bytes=33206272
+
+K=10
+Exhaustive | mean_us=23127.99 | p50_us=11490.80 | p95_us=79228.32 | p99_us=185919.05 | throughput_qps=43.23 | cpu_seconds=19.43 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33206272
+WAND | mean_us=19007.09 | p50_us=12671.85 | p95_us=57728.43 | p99_us=107674.44 | throughput_qps=52.61 | cpu_seconds=15.97 | documents_scored=296234 | postings_visited=399518 | blocks_skipped=0 | memory_bytes=33206272
+Block-Max WAND | mean_us=26159.10 | p50_us=14745.75 | p95_us=103935.41 | p99_us=208263.70 | throughput_qps=38.22 | cpu_seconds=21.98 | documents_scored=241470 | postings_visited=342236 | blocks_skipped=462 | memory_bytes=33206272
+
+K=50
+Exhaustive | mean_us=23761.85 | p50_us=11788.85 | p95_us=83082.12 | p99_us=184487.66 | throughput_qps=42.08 | cpu_seconds=19.96 | documents_scored=423405 | postings_visited=449587 | blocks_skipped=0 | memory_bytes=33206272
+WAND | mean_us=23501.02 | p50_us=12651.90 | p95_us=88450.57 | p99_us=165928.32 | throughput_qps=42.55 | cpu_seconds=19.75 | documents_scored=345235 | postings_visited=420123 | blocks_skipped=0 | memory_bytes=33206272
+Block-Max WAND | mean_us=31988.47 | p50_us=

@@ -1,0 +1,15 @@
+{
+  "name": "@atlas/backend",
+  "version": "1.0.0",
+  "description": "Atlas HTTP API",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@atlas/database-adapter": "file:../database_adapter",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0"
+  }
+}
