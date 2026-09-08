@@ -74,7 +74,10 @@ COPY api/backend/src ./api/backend/src
 COPY api/database_adapter/index.js ./api/database_adapter/index.js
 COPY api/database_adapter/src ./api/database_adapter/src
 # Production search index
-COPY data/index/news.atlas ./data/index/news.atlas
+RUN mkdir -p ./data/index \
+    && curl -L \
+    -o ./data/index/news.atlas \
+    https://github.com/anubhabjucse/atlas-search/releases/download/v4.0-index/news.atlas
 
 ENV ATLAS_WORKER_PATH=./build/atlas_search_worker
 ENV ATLAS_INDEX_PATH=./data/index/news.atlas
