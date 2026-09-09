@@ -24,6 +24,7 @@ add_library(search_engine
     search_engine/src/prepared_query.cpp
     search_engine/src/index_persistence.cpp
     search_engine/src/phrase_retriever.cpp
+    search_engine/src/vector_index.cpp
 )
 
 target_include_directories(search_engine
@@ -94,6 +95,7 @@ add_search_engine_test(index_builder_test)
 add_search_engine_test(prepared_query_test)
 add_search_engine_test(index_persistence_test)
 add_search_engine_test(search_engine_persistence_test)
+add_search_engine_test(vector_index_test)
 add_executable(
     atlas_search_worker
     search_engine/tools/atlas_search_worker.cpp
