@@ -1,0 +1,31 @@
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      NODE_ENV: production
+
+      MONGODB_URI: ${MONGODB_URI}
+
+      ATLAS_WORKER_PATH: /atlas/build/atlas_search_worker
+      ATLAS_INDEX_PATH: /atlas/data/index/news.atlas
+      ATLAS_VECTOR_INDEX_PATH: /atlas/data/index/news.vector
+      ATLAS_EMBEDDING_URL: ${ATLAS_EMBEDDING_URL:-http://embedding:8080}
+
+    depends_on:
+      - embedding
+
+
+  embedding:
+    build:
+      context: .
+      dockerfile: Dockerfile.embedding
+
+    expose:
+      - "8080"

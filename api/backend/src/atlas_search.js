@@ -1,15 +1,23 @@
-const { spawn } = require("child_process");
 
+const { spawn } =
+    require("child_process");
 
 const readline =
     require("readline");
 
 const path =
     require("path");
+
 class AtlasSearch {
-    constructor(workerPath, indexPath,runtimePath="") {
+    constructor(
+        workerPath,
+        indexPath,
+        vectorIndexPath,
+        runtimePath = ""
+    ) {
         this.workerPath = workerPath;
         this.indexPath = indexPath;
+        this.vectorIndexPath = vectorIndexPath;
         this.runtimePath = runtimePath;
 
         this.process = null;
@@ -22,30 +30,32 @@ class AtlasSearch {
             return;
         }
 
-        const path = require("path");
+        const workerDirectory =
+            path.dirname(this.workerPath);
 
-const workerDirectory = path.dirname(this.workerPath);
+        const runtimePaths = [
+            workerDirectory,
+            this.runtimePath
+        ].filter(Boolean);
 
-const runtimePaths = [
-    workerDirectory,
-    this.runtimePath
-].filter(Boolean);
-
-this.process = spawn(
-    this.workerPath,
-    [this.indexPath],
-    {
-        stdio: ["pipe", "pipe", "inherit"],
-        cwd: workerDirectory,
-        env: {
-            ...process.env,
-            PATH: [
-                ...runtimePaths,
-                process.env.PATH || ""
-            ].join(path.delimiter)
-        }
-    }
-);
+        this.process = spawn(
+            this.workerPath,
+            [
+                this.indexPath,
+                this.vectorIndexPath
+            ],
+            {
+                stdio: ["pipe", "pipe", "inherit"],
+                cwd: workerDirectory,
+                env: {
+                    ...process.env,
+                    PATH: [
+                        ...runtimePaths,
+                        process.env.PATH || ""
+                    ].join(path.delimiter)
+                }
+            }
+        );
 
         this.readline =
             readline.createInterface({
@@ -89,25 +99,48 @@ this.process = spawn(
         }
 
         if (line.startsWith("RESULT\t")) {
-            const parts = line.split("\t");
+            const parts =
+                line.split("\t");
 
             this.pending.result.results.push({
-                documentId: Number(parts[1]),
-                score: Number(parts[2])
+                documentId:
+                    Number(parts[1]),
+                score:
+                    Number(parts[2])
             });
 
             return;
         }
 
-        if (line.startsWith("STATS\t")) {
-            const parts = line.split("\t");
+        if (line.startsWith("SEMANTIC_STATS\t")) {
+            const parts =
+                line.split("\t");
 
             this.pending.result.stats = {
-                documentsScored: Number(parts[1]),
-                postingsVisited: Number(parts[2]),
-                blocksSkipped: Number(parts[3]),
-                queryTerms: Number(parts[4]),
-                matchedTerms: Number(parts[5]),
+                documentsIndexed:
+                    Number(parts[1]),
+                dimensions:
+                    Number(parts[2])
+            };
+
+            return;
+        }
+
+        if (line.startsWith("STATS\t")) {
+            const parts =
+                line.split("\t");
+
+            this.pending.result.stats = {
+                documentsScored:
+                    Number(parts[1]),
+                postingsVisited:
+                    Number(parts[2]),
+                blocksSkipped:
+                    Number(parts[3]),
+                queryTerms:
+                    Number(parts[4]),
+                matchedTerms:
+                    Number(parts[5]),
                 candidatesConsidered:
                     Number(parts[6])
             };
@@ -168,6 +201,52 @@ this.process = spawn(
         );
     }
 
+    semanticSearch(
+        embedding,
+        {
+            limit = 10
+        } = {}
+    ) {
+        this.start();
+
+        if (this.pending) {
+            return Promise.reject(
+                new Error(
+                    "Another Atlas search is currently running"
+                )
+            );
+        }
+
+        if (!Array.isArray(embedding)) {
+            return Promise.reject(
+                new Error(
+                    "embedding must be an array"
+                )
+            );
+        }
+
+        return new Promise(
+            (resolve, reject) => {
+                this.pending = {
+                    resolve,
+                    reject,
+                    result: {
+                        results: [],
+                        stats: null
+                    }
+                };
+
+                this.process.stdin.write(
+                    `SEMANTIC\t${limit}\n`
+                );
+
+                this.process.stdin.write(
+                    `VECTOR\t${embedding.join(" ")}\n`
+                );
+            }
+        );
+    }
+
     close() {
         if (this.process) {
             this.process.kill();
@@ -180,3 +259,4 @@ this.process = spawn(
 }
 
 module.exports = AtlasSearch;
+

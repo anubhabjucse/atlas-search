@@ -1,4 +1,5 @@
 #include "atlas/search_engine.hpp"
+#include "atlas/vector_index.hpp"
 
 #include <cctype>
 #include <cstdlib>
@@ -7,6 +8,9 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <sstream>
+#include <vector>
+#include <cmath>
 
 namespace
 {
@@ -63,6 +67,39 @@ std::string percent_decode(
     }
 
     return output;
+}
+
+std::vector<float> parse_vector(
+    std::string_view value)
+{
+    std::vector<float> vector;
+
+    std::istringstream stream{
+        std::string(value)
+    };
+
+    float component;
+
+    while (stream >> component)
+    {
+        if (!std::isfinite(component))
+        {
+            throw std::runtime_error(
+                "vector contains non-finite value"
+            );
+        }
+
+        vector.push_back(component);
+    }
+
+    if (vector.empty())
+    {
+        throw std::runtime_error(
+            "empty semantic query vector"
+        );
+    }
+
+    return vector;
 }
 
 std::size_t parse_size(
@@ -156,21 +193,31 @@ int main(int argc, char** argv)
 {
     try
     {
-        if (argc != 2)
+        if (argc != 3)
         {
             std::cerr
                 << "Usage: atlas_search_worker "
-                << "<index-path>\n";
+                << "<lexical-index-path> "
+                << "<vector-index-path>\n";
 
             return EXIT_FAILURE;
         }
 
         atlas::SearchEngine search_engine;
+        atlas::VectorIndex vector_index;
 
         search_engine.load(argv[1]);
 
+        vector_index =
+            atlas::VectorIndex::load(argv[2]);
+
         std::cerr
-            << "Atlas search worker ready\n";
+            << "Atlas search worker ready\n"
+            << "Vector index: "
+            << vector_index.size()
+            << " documents, "
+            << vector_index.dimensions()
+            << " dimensions\n";
 
         std::string line;
 
@@ -181,6 +228,90 @@ int main(int argc, char** argv)
             if (line.empty())
                 continue;
 
+            /*
+             * Semantic vector search
+             *
+             * Protocol:
+             *
+             * SEMANTIC <k>
+             * VECTOR <f1> <f2> ... <fn>
+             */
+            if (line.rfind(
+                    "SEMANTIC\t",
+                    0) == 0)
+            {
+                const std::string parameters =
+                    line.substr(9);
+
+                const std::size_t k =
+                    parse_size(parameters);
+
+                std::string vector_line;
+
+                if (!std::getline(
+                        std::cin,
+                        vector_line))
+                {
+                    break;
+                }
+
+                if (
+                    vector_line.rfind(
+                        "VECTOR\t",
+                        0) != 0)
+                {
+                    std::cout
+                        << "ERROR\texpected VECTOR line\n"
+                        << std::flush;
+
+                    continue;
+                }
+
+                const std::vector<float> query =
+                    parse_vector(
+                        std::string_view(vector_line)
+                            .substr(7)
+                    );
+
+                const auto results =
+                    vector_index.search(
+                        query,
+                        k
+                    );
+
+                for (const auto& result :
+                     results)
+                {
+                    std::cout
+                        << "RESULT\t"
+                        << result.document_id
+                        << '\t'
+                        << result.score
+                        << '\n';
+                }
+
+                std::cout
+                    << "SEMANTIC_STATS\t"
+                    << vector_index.size()
+                    << '\t'
+                    << vector_index.dimensions()
+                    << '\n';
+
+                std::cout
+                    << "END\n"
+                    << std::flush;
+
+                continue;
+            }
+
+            /*
+             * Existing lexical search
+             *
+             * Protocol:
+             *
+             * SEARCH <k> <ranking> <retrieval> <mode>
+             * QUERY <query>
+             */
             if (line.rfind(
                     "SEARCH\t",
                     0) != 0)

@@ -1,3 +1,4 @@
+
 const express = require("express");
 
 const {
@@ -6,6 +7,8 @@ const {
     host,
     atlasWorker,
     atlasIndex,
+    atlasVectorIndex,
+    embeddingUrl,
     atlasRuntimePath
 } = require("./config");
 
@@ -31,6 +34,7 @@ const searchEngine =
     new AtlasSearch(
         atlasWorker,
         atlasIndex,
+        atlasVectorIndex,
         atlasRuntimePath
     );
 
@@ -68,7 +72,8 @@ app.post(
         try {
             const {
                 query,
-                limit = 10
+                limit = 10,
+                mode = "LEXICAL"
             } = req.body;
 
             if (
@@ -92,11 +97,71 @@ app.post(
                 });
             }
 
-            const search =
-                await searchEngine.search(
-                    query,
-                    { limit }
-                );
+            if (
+                mode !== "LEXICAL" &&
+                mode !== "SEMANTIC"
+            ) {
+                return res.status(400).json({
+                    error:
+                        "mode must be LEXICAL or SEMANTIC"
+                });
+            }
+
+            let search;
+
+            if (mode === "SEMANTIC") {
+                const embeddingResponse =
+                    await fetch(
+                        `${embeddingUrl}/embedding`,
+                        {
+                            method: "POST",
+                            headers: {
+                                "Content-Type":
+                                    "application/json"
+                            },
+                            body: JSON.stringify({
+                                input: [query]
+                            })
+                        }
+                    );
+
+                if (!embeddingResponse.ok) {
+                    throw new Error(
+                        `Embedding service returned ${embeddingResponse.status}`
+                    );
+                }
+
+                const embeddingData =
+                    await embeddingResponse.json();
+
+                if (
+                    !Array.isArray(embeddingData) ||
+                    !embeddingData[0] ||
+                    !Array.isArray(
+                        embeddingData[0].embedding
+                    )
+                ) {
+                    throw new Error(
+                        "Invalid embedding service response"
+                    );
+                }
+
+                const embedding =
+                    embeddingData[0].embedding[0];
+
+                search =
+                    await searchEngine.semanticSearch(
+                        embedding,
+                        { limit }
+                    );
+            }
+            else {
+                search =
+                    await searchEngine.search(
+                        query,
+                        { limit }
+                    );
+            }
 
             const ids =
                 search.results.map(

@@ -120,7 +120,20 @@ target_link_libraries(
     PRIVATE
         search_engine
 )
+add_executable(
+    vector_index_inspect
+    search_engine/tools/vector_index_inspect.cpp
+)
 
+target_link_libraries(
+    vector_index_inspect
+    PRIVATE
+        search_engine
+)
+
+target_compile_options(vector_index_inspect PRIVATE
+    -Wall -Wextra -Wpedantic
+)
 target_compile_options(atlas_index_builder PRIVATE
     -Wall -Wextra -Wpedantic
 )

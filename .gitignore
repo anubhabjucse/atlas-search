@@ -5,8 +5,10 @@
 .env
 .env.*
 !.env.example
-
-
+embedding.json
+embeddings.json
+embedding_test.json
+models/embeddinggemma/
 # ============================================================
 # Node.js
 # ============================================================

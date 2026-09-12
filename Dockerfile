@@ -32,10 +32,6 @@ RUN cmake --build build \
 # Stage 2: Runtime
 # ============================================================
 
-# ============================================================
-# Stage 2: Runtime
-# ============================================================
-
 FROM ubuntu:24.04 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -50,6 +46,7 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /atlas
 
 # Atlas Linux search worker
@@ -73,14 +70,28 @@ RUN cd api/backend && npm ci --omit=dev
 COPY api/backend/src ./api/backend/src
 COPY api/database_adapter/index.js ./api/database_adapter/index.js
 COPY api/database_adapter/src ./api/database_adapter/src
-# Production search index
+
+# ============================================================
+# Production search indexes
+# ============================================================
+
 RUN mkdir -p ./data/index \
     && curl -L \
     -o ./data/index/news.atlas \
     https://github.com/anubhabjucse/atlas-search/releases/download/v4.0-index/news.atlas
 
-ENV ATLAS_WORKER_PATH=./build/atlas_search_worker
-ENV ATLAS_INDEX_PATH=./data/index/news.atlas
+RUN curl -L \
+    -o ./data/index/news.vector \
+    https://github.com/anubhabjucse/atlas-search/releases/download/v5.1-vector-index/news.vector
+
+# ============================================================
+# Atlas runtime configuration
+# ============================================================
+
+ENV ATLAS_WORKER_PATH=/atlas/build/atlas_search_worker
+ENV ATLAS_INDEX_PATH=/atlas/data/index/news.atlas
+ENV ATLAS_VECTOR_INDEX_PATH=/atlas/data/index/news.vector
+ENV ATLAS_EMBEDDING_URL=http://embedding:8080
 ENV ATLAS_RUNTIME_PATH=
 
 WORKDIR /atlas/api/backend

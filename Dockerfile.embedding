@@ -1,0 +1,21 @@
+FROM ghcr.io/ggml-org/llama.cpp:server
+
+WORKDIR /app
+
+RUN mkdir -p /models \
+    && curl -L \
+    -o /models/embeddinggemma-300M-Q8_0.gguf \
+    https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf
+
+EXPOSE 8080
+
+CMD [
+  "/app/llama-server",
+  "-m",
+  "/models/embeddinggemma-300M-Q8_0.gguf",
+  "--embedding",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8080"
+]

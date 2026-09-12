@@ -1,3 +1,4 @@
+
 #include "atlas/vector_index.hpp"
 
 #include <algorithm>
@@ -92,11 +93,19 @@ void VectorIndex::add(
 
     document_ids_.push_back(document_id);
 
-    embeddings_.insert(
-        embeddings_.end(),
-        embedding.begin(),
-        embedding.end()
+    const std::size_t offset =
+        embeddings_.size();
+
+    embeddings_.resize(
+        offset + dimensions_
     );
+
+    for (std::size_t i = 0;
+         i < dimensions_;
+         ++i) {
+        embeddings_[offset + i] =
+            embedding[i] / norm;
+    }
 }
 
 std::vector<VectorSearchResult> VectorIndex::search(
@@ -348,6 +357,44 @@ VectorIndex VectorIndex::load(const std::string& path) {
         );
     }
 
+    /*
+     * Existing vector indexes may contain raw,
+     * unnormalized embeddings. Normalize every
+     * document vector once while loading so that
+     * VectorIndex maintains the invariant:
+     *
+     *     ||document_embedding|| = 1
+     *
+     * This allows search() to calculate cosine
+     * similarity as:
+     *
+     *     dot(query, document) / ||query||
+     */
+    for (std::size_t i = 0;
+         i < index.document_ids_.size();
+         ++i) {
+        float* embedding =
+            index.embeddings_.data() +
+            (i * index.dimensions_);
+
+        const float norm = vector_norm(
+            embedding,
+            index.dimensions_
+        );
+
+        if (!std::isfinite(norm) || norm <= 0.0f) {
+            throw std::runtime_error(
+                "Vector index contains an invalid embedding"
+            );
+        }
+
+        for (std::size_t j = 0;
+             j < index.dimensions_;
+             ++j) {
+            embedding[j] /= norm;
+        }
+    }
+
     return index;
 }
 
@@ -360,3 +407,4 @@ std::size_t VectorIndex::dimensions() const {
 }
 
 } // namespace atlas
+
