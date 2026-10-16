@@ -9,6 +9,8 @@ embedding.json
 embeddings.json
 embedding_test.json
 models/embeddinggemma/
+query_embedding.json
+query.vector
 # ============================================================
 # Node.js
 # ============================================================
