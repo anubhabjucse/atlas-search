@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -20,14 +21,11 @@ struct Posting {
     DocumentId document_id;
     std::uint32_t term_frequency;
 
-    /*
-     * Token positions are zero-based and strictly increasing.
-     *
-     * Keeping positions in postings gives Atlas the information
-     * required for phrase/proximity search without storing the
-     * original document text in the search index.
+    /* Positions live in TermData::positions to avoid one heap allocation
+     * per posting. The range is [position_offset, position_offset + position_count).
      */
-    std::vector<std::uint32_t> positions;
+    std::size_t position_offset = 0;
+    std::uint32_t position_count = 0;
 };
 
 struct PostingBlock {
@@ -43,6 +41,7 @@ struct PostingBlock {
 
 struct TermData {
     std::vector<Posting> postings;
+    std::vector<std::uint32_t> positions;
     std::vector<PostingBlock> blocks;
     std::uint32_t max_term_frequency = 0;
 };
@@ -153,7 +152,7 @@ public:
         DocumentId document_id
     ) const = 0;
 
-    virtual const std::vector<std::uint32_t>& term_positions(
+    virtual std::span<const std::uint32_t> term_positions(
         std::string_view term,
         DocumentId document_id
     ) const = 0;
@@ -207,7 +206,7 @@ public:
         DocumentId document_id
     ) const override;
 
-    const std::vector<std::uint32_t>& term_positions(
+    std::span<const std::uint32_t> term_positions(
         std::string_view term,
         DocumentId document_id
     ) const override;

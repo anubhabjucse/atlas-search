@@ -15,7 +15,7 @@ services:
 
       ATLAS_WORKER_PATH: /atlas/build/atlas_search_worker
       ATLAS_INDEX_PATH: /atlas/data/index/news.atlas
-      ATLAS_VECTOR_INDEX_PATH: /atlas/data/index/news.vector
+      ATLAS_VECTOR_INDEX_PATH: /atlas/data/index/news.vector.int8
       ATLAS_EMBEDDING_URL: ${ATLAS_EMBEDDING_URL:-http://embedding:8080}
 
     depends_on:

@@ -9,7 +9,12 @@ echo "Starting EmbeddingGemma..."
   -m "$MODEL_PATH" \
   --embedding \
   --host 127.0.0.1 \
-  --port 8080 &
+  --port 8080 \
+  --parallel 1 \
+  --ctx-size 512 \
+  --batch-size 128 \
+  --ubatch-size 128 \
+  --threads 2 &
 EMBEDDING_PID=$!
 
 echo "Waiting for embedding server..."

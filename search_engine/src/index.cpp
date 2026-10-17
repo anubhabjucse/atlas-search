@@ -68,11 +68,20 @@ void InMemoryIndex::add(
         const std::size_t posting_position =
             term_data.postings.size();
 
+        const std::size_t position_offset =
+            term_data.positions.size();
+
+        term_data.positions.insert(
+            term_data.positions.end(),
+            positions.begin(),
+            positions.end());
+
         term_data.postings.push_back(
             Posting{
                 document_id,
                 frequency,
-                positions
+                position_offset,
+                frequency
             }
         );
 
@@ -227,18 +236,16 @@ InMemoryIndex::term_frequency(
     return posting_it->term_frequency;
 }
 
-const std::vector<std::uint32_t>&
+std::span<const std::uint32_t>
 InMemoryIndex::term_positions(
     std::string_view term,
     DocumentId document_id
 ) const {
-    static const std::vector<std::uint32_t> empty;
-
     const auto it =
         dictionary_.find(std::string(term));
 
     if (it == dictionary_.end()) {
-        return empty;
+        return {};
     }
 
     const auto& postings =
@@ -260,10 +267,13 @@ InMemoryIndex::term_positions(
     if (posting_it == postings.end() ||
         posting_it->document_id != document_id) {
 
-        return empty;
+        return {};
     }
 
-    return posting_it->positions;
+    const auto& positions = it->second.positions;
+    return std::span<const std::uint32_t>(
+        positions.data() + posting_it->position_offset,
+        posting_it->position_count);
 }
 
 std::uint32_t

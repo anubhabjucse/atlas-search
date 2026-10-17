@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <queue>
 #include <stdexcept>
 #include <vector>
 
@@ -254,8 +255,28 @@ std::vector<VectorSearchResult> VectorIndex::search(
 
     top_k = std::min(top_k, document_ids_.size());
 
-    std::vector<VectorSearchResult> results;
-    results.reserve(document_ids_.size());
+    // Keep only the best top_k results while scoring every document.
+    // The heap's top is the worst currently retained result, so a new
+    // candidate replaces it only when the candidate ranks higher.
+    const auto ranks_better = [](const VectorSearchResult& lhs,
+                                 const VectorSearchResult& rhs) {
+        if (lhs.score != rhs.score) {
+            return lhs.score > rhs.score;
+        }
+        return lhs.document_id < rhs.document_id;
+    };
+
+    const auto heap_compare = [&ranks_better](
+        const VectorSearchResult& lhs,
+        const VectorSearchResult& rhs) {
+        return ranks_better(lhs, rhs);
+    };
+
+    std::priority_queue<
+        VectorSearchResult,
+        std::vector<VectorSearchResult>,
+        decltype(heap_compare)
+    > best(heap_compare);
 
     for (std::size_t i = 0; i < document_ids_.size(); ++i) {
         const int8_t* document_embedding =
@@ -268,43 +289,27 @@ std::vector<VectorSearchResult> VectorIndex::search(
                 dimensions_
             ) / query_norm;
 
-        results.push_back({
+        const VectorSearchResult candidate{
             document_ids_[i],
             similarity
-        });
-    }
+        };
 
-    if (results.size() > top_k) {
-        std::nth_element(
-            results.begin(),
-            results.begin() + top_k,
-            results.end(),
-            [](const VectorSearchResult& lhs,
-               const VectorSearchResult& rhs) {
-                if (lhs.score != rhs.score) {
-                    return lhs.score > rhs.score;
-                }
-
-                return lhs.document_id < rhs.document_id;
-            }
-        );
-
-        results.resize(top_k);
-    }
-
-    std::sort(
-        results.begin(),
-        results.end(),
-        [](const VectorSearchResult& lhs,
-           const VectorSearchResult& rhs) {
-            if (lhs.score != rhs.score) {
-                return lhs.score > rhs.score;
-            }
-
-            return lhs.document_id < rhs.document_id;
+        if (best.size() < top_k) {
+            best.push(candidate);
+        } else if (ranks_better(candidate, best.top())) {
+            best.pop();
+            best.push(candidate);
         }
-    );
+    }
 
+    std::vector<VectorSearchResult> results;
+    results.reserve(best.size());
+    while (!best.empty()) {
+        results.push_back(best.top());
+        best.pop();
+    }
+
+    std::sort(results.begin(), results.end(), ranks_better);
     return results;
 }
 

@@ -428,15 +428,16 @@ namespace atlas
                     write_u64(
                         output,
                         static_cast<std::uint64_t>(
-                            posting.positions.size()));
+                            posting.position_count));
 
-                    for (const std::uint32_t position :
-                         posting.positions)
+                    for (std::size_t position_index = 0;
+                         position_index < posting.position_count;
+                         ++position_index)
                     {
-
                         write_u32(
                             output,
-                            position);
+                            data.positions[
+                                posting.position_offset + position_index]);
                     }
                 }
 
@@ -745,9 +746,19 @@ namespace atlas
                     position_count,
                     "posting position");
 
-                posting.positions.reserve(
-                    static_cast<std::size_t>(
-                        position_count));
+                posting.position_offset = data.positions.size();
+                posting.position_count = static_cast<std::uint32_t>(position_count);
+
+                if (position_count >
+                    std::numeric_limits<std::uint32_t>::max())
+                {
+                    throw std::runtime_error(
+                        "serialized posting position count exceeds format limit");
+                }
+
+                data.positions.reserve(
+                    data.positions.size() +
+                    static_cast<std::size_t>(position_count));
 
                 std::uint32_t previous_position = 0;
                 bool has_previous_position = false;
@@ -768,7 +779,7 @@ namespace atlas
                             "serialized posting positions are not strictly ordered");
                     }
 
-                    posting.positions.push_back(
+                    data.positions.push_back(
                         position);
 
                     previous_position =
@@ -777,7 +788,7 @@ namespace atlas
                     has_previous_position = true;
                 }
 
-                if (posting.positions.size() !=
+                if (position_count !=
                     posting.term_frequency)
                 {
 
