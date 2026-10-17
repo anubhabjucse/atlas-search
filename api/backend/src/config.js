@@ -29,9 +29,10 @@ const config = {
   ),
 
   atlasVectorIndex: path.resolve(
-    PROJECT_ROOT,
-    process.env.ATLAS_VECTOR_INDEX_PATH || "./data/index/news.vector",
-  ),
+  PROJECT_ROOT,
+  process.env.ATLAS_VECTOR_INDEX_PATH ||
+    "./data/index/news.vector.int8",
+),
 
   embeddingUrl: process.env.ATLAS_EMBEDDING_URL || "http://127.0.0.1:8080",
 

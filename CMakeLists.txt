@@ -138,6 +138,22 @@ target_compile_options(atlas_index_builder PRIVATE
     -Wall -Wextra -Wpedantic
 )
 add_executable(
+    quantize_vector_index
+    search_engine/tools/quantize_vector_index.cpp
+)
+
+target_link_libraries(
+    quantize_vector_index
+    PRIVATE
+        search_engine
+)
+
+target_compile_options(
+    quantize_vector_index
+    PRIVATE
+        -Wall -Wextra -Wpedantic
+)
+add_executable(
     database_adapter_test
     api/database_adapter/tests/database_adapter_test.cpp
 )

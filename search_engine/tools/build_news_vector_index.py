@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import math
 import argparse
 import json
 import os
@@ -206,11 +206,14 @@ def validate_embedding(embedding, document_id):
         )
 
     for value in embedding:
-        if not isinstance(value, (int, float)):
+        if (
+            not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+        ):
             raise RuntimeError(
                 f"Document {document_id}: embedding contains "
-                "a non-numeric value"
-            )
+                "a non-numeric or non-finite value"
+            )   
 
 
 def load_vector_index_module():
@@ -224,70 +227,78 @@ def load_vector_index_module():
     return None
 
 
-def write_vectors(
-    vectors_path,
-    document_ids,
-    embeddings,
-):
+def write_vectors(vectors_path, document_ids, embeddings):
     """
-    Temporary portable writer for the current ATLVEC01 format.
+    Write the compact ATLVEC01 version 2 format.
 
-    The binary layout mirrors VectorIndex::save():
-
+    Layout:
         magic[8]
-        uint32 version
+        uint32 version = 2
         uint32 dimensions
         uint64 document_count
-        document IDs
-        float32 embeddings
+        uint32 document IDs
+        signed int8 normalized vector components
     """
-
     import struct
 
     if len(document_ids) != len(embeddings):
-        raise RuntimeError(
-            "Document/vector count mismatch"
-        )
+        raise RuntimeError("Document/vector count mismatch")
 
-    dimensions = (
-        len(embeddings[0])
-        if embeddings
-        else 0
-    )
+    if not embeddings:
+        raise RuntimeError("Cannot write an empty vector index")
+
+    dimensions = len(embeddings[0])
+
+    if dimensions <= 0:
+        raise RuntimeError("Vector dimensions must be positive")
 
     output = Path(vectors_path)
-    output.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    output.parent.mkdir(parents=True, exist_ok=True)
 
     with output.open("wb") as file:
         file.write(
             struct.pack(
                 "<8sIIQ",
                 b"ATLVEC01",
-                1,
+                2,
                 dimensions,
                 len(document_ids),
             )
         )
 
         for document_id in document_ids:
-            file.write(
-                struct.pack(
-                    "<I",
-                    document_id,
+            file.write(struct.pack("<I", document_id))
+
+        for row_number, embedding in enumerate(embeddings):
+            if len(embedding) != dimensions:
+                raise RuntimeError(
+                    f"Vector {row_number} has inconsistent dimensions"
                 )
+
+            if any(not math.isfinite(float(value)) for value in embedding):
+                raise RuntimeError(
+                    f"Vector {row_number} contains non-finite values"
+                )
+
+            norm = math.sqrt(
+                sum(float(value) * float(value) for value in embedding)
             )
 
-        for embedding in embeddings:
-            file.write(
-                struct.pack(
-                    f"<{dimensions}f",
-                    *embedding,
+            if not math.isfinite(norm) or norm <= 0.0:
+                raise RuntimeError(
+                    f"Vector {row_number} has an invalid norm"
                 )
-            )
 
+            quantized = []
+
+            for value in embedding:
+                normalized = float(value) / norm
+                component = int(round(normalized * 127.0))
+                quantized.append(max(-127, min(127, component)))
+
+            file.write(
+                struct.pack(f"<{dimensions}b", *quantized)
+            )
 
 def main():
     args = parse_args()

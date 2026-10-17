@@ -1,13 +1,13 @@
-
 #include "atlas/vector_index.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
-#include <utility>
+#include <vector>
 
 namespace atlas {
 namespace {
@@ -19,35 +19,162 @@ struct VectorIndexHeader {
     uint64_t document_count;
 };
 
+static_assert(sizeof(VectorIndexHeader) == 24);
+
 constexpr char kMagic[8] = {
     'A', 'T', 'L', 'V', 'E', 'C', '0', '1'
 };
 
-float dot_product(
-    const float* lhs,
-    const float* rhs,
-    std::size_t dimensions
-) {
-    float result = 0.0f;
-
-    for (std::size_t i = 0; i < dimensions; ++i) {
-        result += lhs[i] * rhs[i];
-    }
-
-    return result;
-}
+constexpr std::size_t kHeaderSize = sizeof(VectorIndexHeader);
 
 float vector_norm(
     const float* values,
     std::size_t dimensions
 ) {
-    float squared_norm = 0.0f;
+    double squared_norm = 0.0;
 
     for (std::size_t i = 0; i < dimensions; ++i) {
-        squared_norm += values[i] * values[i];
+        if (!std::isfinite(values[i])) {
+            throw std::invalid_argument(
+                "Embedding contains a non-finite value"
+            );
+        }
+
+        squared_norm +=
+            static_cast<double>(values[i]) * values[i];
     }
 
-    return std::sqrt(squared_norm);
+    return static_cast<float>(std::sqrt(squared_norm));
+}
+
+std::vector<int8_t> normalize_and_quantize(
+    const float* values,
+    std::size_t dimensions
+) {
+    const float norm = vector_norm(values, dimensions);
+
+    if (!std::isfinite(norm) || norm <= 0.0f) {
+        throw std::invalid_argument(
+            "Embedding must have a finite non-zero norm"
+        );
+    }
+
+    std::vector<int8_t> result(dimensions);
+
+    for (std::size_t i = 0; i < dimensions; ++i) {
+        const float normalized = values[i] / norm;
+
+        const long quantized = std::lround(
+            normalized * 127.0f
+        );
+
+        result[i] = static_cast<int8_t>(
+            std::clamp(quantized, -127L, 127L)
+        );
+    }
+
+    return result;
+}
+
+void validate_header(
+    const VectorIndexHeader& header,
+    uint64_t file_size
+) {
+    if (!std::equal(
+            std::begin(kMagic),
+            std::end(kMagic),
+            std::begin(header.magic))) {
+        throw std::runtime_error(
+            "Invalid vector index magic"
+        );
+    }
+
+    if (header.version != 1 && header.version != 2) {
+        throw std::runtime_error(
+            "Unsupported vector index version"
+        );
+    }
+
+    if (header.document_count >
+        static_cast<uint64_t>(
+            std::numeric_limits<std::size_t>::max())) {
+        throw std::runtime_error(
+            "Vector index document count exceeds platform limits"
+        );
+    }
+
+    const uint64_t count = header.document_count;
+    const uint64_t dimensions = header.dimensions;
+    const uint64_t bytes_per_component =
+        header.version == 1 ? sizeof(float) : sizeof(int8_t);
+
+    if (count > 0 && dimensions == 0) {
+        throw std::runtime_error(
+            "Non-empty vector index has zero dimensions"
+        );
+    }
+
+    // Guard every multiplication and addition before computing
+    // the expected payload length.
+    constexpr uint64_t max_u64 =
+        std::numeric_limits<uint64_t>::max();
+
+    if (count > max_u64 / sizeof(uint32_t)) {
+        throw std::runtime_error(
+            "Vector index document-ID payload overflows"
+        );
+    }
+
+    const uint64_t ids_bytes = count * sizeof(uint32_t);
+
+    if (dimensions != 0 &&
+        count > max_u64 / dimensions) {
+        throw std::runtime_error(
+            "Vector index component count overflows"
+        );
+    }
+
+    const uint64_t components = count * dimensions;
+
+    if (components > max_u64 / bytes_per_component) {
+        throw std::runtime_error(
+            "Vector index vector payload overflows"
+        );
+    }
+
+    const uint64_t vectors_bytes =
+        components * bytes_per_component;
+
+    if (ids_bytes > max_u64 - kHeaderSize ||
+        vectors_bytes > max_u64 - kHeaderSize - ids_bytes) {
+        throw std::runtime_error(
+            "Vector index expected file size overflows"
+        );
+    }
+
+    const uint64_t expected_size =
+        kHeaderSize + ids_bytes + vectors_bytes;
+
+    if (file_size != expected_size) {
+        throw std::runtime_error(
+            "Vector index file length does not match its header"
+        );
+    }
+}
+
+float dot_product_quantized(
+    const float* query,
+    const int8_t* document,
+    std::size_t dimensions
+) {
+    double result = 0.0;
+
+    for (std::size_t i = 0; i < dimensions; ++i) {
+        result += static_cast<double>(query[i]) *
+                  static_cast<double>(document[i]);
+    }
+
+    return static_cast<float>(result / 127.0);
 }
 
 } // namespace
@@ -56,6 +183,13 @@ void VectorIndex::reserve(std::size_t document_count) {
     document_ids_.reserve(document_count);
 
     if (dimensions_ != 0) {
+        if (document_count >
+            std::numeric_limits<std::size_t>::max() / dimensions_) {
+            throw std::length_error(
+                "Vector index reserve size overflows"
+            );
+        }
+
         embeddings_.reserve(document_count * dimensions_);
     }
 }
@@ -80,32 +214,17 @@ void VectorIndex::add(
         );
     }
 
-    const float norm = vector_norm(
+    const auto quantized = normalize_and_quantize(
         embedding.data(),
         dimensions_
     );
 
-    if (!std::isfinite(norm) || norm <= 0.0f) {
-        throw std::invalid_argument(
-            "Embedding must have a finite non-zero norm"
-        );
-    }
-
     document_ids_.push_back(document_id);
-
-    const std::size_t offset =
-        embeddings_.size();
-
-    embeddings_.resize(
-        offset + dimensions_
+    embeddings_.insert(
+        embeddings_.end(),
+        quantized.begin(),
+        quantized.end()
     );
-
-    for (std::size_t i = 0;
-         i < dimensions_;
-         ++i) {
-        embeddings_[offset + i] =
-            embedding[i] / norm;
-    }
 }
 
 std::vector<VectorSearchResult> VectorIndex::search(
@@ -139,11 +258,11 @@ std::vector<VectorSearchResult> VectorIndex::search(
     results.reserve(document_ids_.size());
 
     for (std::size_t i = 0; i < document_ids_.size(); ++i) {
-        const float* document_embedding =
-            embeddings_.data() + (i * dimensions_);
+        const int8_t* document_embedding =
+            embeddings_.data() + i * dimensions_;
 
         const float similarity =
-            dot_product(
+            dot_product_quantized(
                 query.data(),
                 document_embedding,
                 dimensions_
@@ -162,7 +281,11 @@ std::vector<VectorSearchResult> VectorIndex::search(
             results.end(),
             [](const VectorSearchResult& lhs,
                const VectorSearchResult& rhs) {
-                return lhs.score > rhs.score;
+                if (lhs.score != rhs.score) {
+                    return lhs.score > rhs.score;
+                }
+
+                return lhs.document_id < rhs.document_id;
             }
         );
 
@@ -186,16 +309,21 @@ std::vector<VectorSearchResult> VectorIndex::search(
 }
 
 void VectorIndex::save(const std::string& path) const {
-    if (dimensions_ == 0 && !document_ids_.empty()) {
+    if (dimensions_ > std::numeric_limits<uint32_t>::max()) {
         throw std::runtime_error(
-            "VectorIndex has documents but no dimensions"
+            "Vector index dimensions exceed the file format limit"
         );
     }
 
-    if (
-        embeddings_.size() !=
-        document_ids_.size() * dimensions_
-    ) {
+    if (document_ids_.size() >
+        std::numeric_limits<std::size_t>::max() /
+            std::max<std::size_t>(dimensions_, 1)) {
+        throw std::runtime_error(
+            "Vector index component count overflows"
+        );
+    }
+
+    if (embeddings_.size() != document_ids_.size() * dimensions_) {
         throw std::runtime_error(
             "VectorIndex internal storage is inconsistent"
         );
@@ -221,8 +349,7 @@ void VectorIndex::save(const std::string& path) const {
     );
 
     header.version = kFormatVersion;
-    header.dimensions =
-        static_cast<uint32_t>(dimensions_);
+    header.dimensions = static_cast<uint32_t>(dimensions_);
     header.document_count =
         static_cast<uint64_t>(document_ids_.size());
 
@@ -231,33 +358,19 @@ void VectorIndex::save(const std::string& path) const {
         sizeof(header)
     );
 
-    if (!output) {
-        throw std::runtime_error(
-            "Failed to write vector index header"
-        );
-    }
-
     if (!document_ids_.empty()) {
         output.write(
-            reinterpret_cast<const char*>(
-                document_ids_.data()
-            ),
+            reinterpret_cast<const char*>(document_ids_.data()),
             static_cast<std::streamsize>(
-                document_ids_.size() *
-                sizeof(uint32_t)
+                document_ids_.size() * sizeof(uint32_t)
             )
         );
     }
 
     if (!embeddings_.empty()) {
         output.write(
-            reinterpret_cast<const char*>(
-                embeddings_.data()
-            ),
-            static_cast<std::streamsize>(
-                embeddings_.size() *
-                sizeof(float)
-            )
+            reinterpret_cast<const char*>(embeddings_.data()),
+            static_cast<std::streamsize>(embeddings_.size())
         );
     }
 
@@ -269,16 +382,16 @@ void VectorIndex::save(const std::string& path) const {
 }
 
 VectorIndex VectorIndex::load(const std::string& path) {
-    std::ifstream input(
-        path,
-        std::ios::binary
-    );
+    std::ifstream input(path, std::ios::binary);
 
     if (!input) {
         throw std::runtime_error(
             "Failed to open vector index: " + path
         );
     }
+
+    const uint64_t file_size =
+        std::filesystem::file_size(path);
 
     VectorIndexHeader header{};
 
@@ -293,105 +406,109 @@ VectorIndex VectorIndex::load(const std::string& path) {
         );
     }
 
-    if (
-        !std::equal(
-            std::begin(kMagic),
-            std::end(kMagic),
-            std::begin(header.magic)
-        )
-    ) {
-        throw std::runtime_error(
-            "Invalid vector index magic"
-        );
-    }
-
-    if (header.version != kFormatVersion) {
-        throw std::runtime_error(
-            "Unsupported vector index version"
-        );
-    }
+    validate_header(header, file_size);
 
     VectorIndex index;
-
     index.dimensions_ = header.dimensions;
 
-    index.document_ids_.resize(
-        static_cast<std::size_t>(
-            header.document_count
-        )
-    );
+    const std::size_t count =
+        static_cast<std::size_t>(header.document_count);
 
-    index.embeddings_.resize(
-        static_cast<std::size_t>(
-            header.document_count
-        ) * index.dimensions_
-    );
+    if (count > 0 &&
+        index.dimensions_ >
+            std::numeric_limits<std::size_t>::max() / count) {
+        throw std::runtime_error(
+            "Vector index allocation size overflows"
+        );
+    }
+
+    index.document_ids_.resize(count);
 
     if (!index.document_ids_.empty()) {
         input.read(
-            reinterpret_cast<char*>(
-                index.document_ids_.data()
-            ),
+            reinterpret_cast<char*>(index.document_ids_.data()),
             static_cast<std::streamsize>(
-                index.document_ids_.size() *
-                sizeof(uint32_t)
-            )
-        );
-    }
-
-    if (!index.embeddings_.empty()) {
-        input.read(
-            reinterpret_cast<char*>(
-                index.embeddings_.data()
-            ),
-            static_cast<std::streamsize>(
-                index.embeddings_.size() *
-                sizeof(float)
+                index.document_ids_.size() * sizeof(uint32_t)
             )
         );
     }
 
     if (!input) {
         throw std::runtime_error(
-            "Failed to read vector index data"
+            "Failed to read vector index document IDs"
         );
     }
 
-    /*
-     * Existing vector indexes may contain raw,
-     * unnormalized embeddings. Normalize every
-     * document vector once while loading so that
-     * VectorIndex maintains the invariant:
-     *
-     *     ||document_embedding|| = 1
-     *
-     * This allows search() to calculate cosine
-     * similarity as:
-     *
-     *     dot(query, document) / ||query||
-     */
-    for (std::size_t i = 0;
-         i < index.document_ids_.size();
-         ++i) {
-        float* embedding =
-            index.embeddings_.data() +
-            (i * index.dimensions_);
+    const std::size_t component_count =
+        count * index.dimensions_;
 
-        const float norm = vector_norm(
-            embedding,
-            index.dimensions_
-        );
+    index.embeddings_.resize(component_count);
 
-        if (!std::isfinite(norm) || norm <= 0.0f) {
-            throw std::runtime_error(
-                "Vector index contains an invalid embedding"
+    if (header.version == 2) {
+        if (!index.embeddings_.empty()) {
+            input.read(
+                reinterpret_cast<char*>(index.embeddings_.data()),
+                static_cast<std::streamsize>(
+                    index.embeddings_.size()
+                )
             );
         }
 
-        for (std::size_t j = 0;
-             j < index.dimensions_;
-             ++j) {
-            embedding[j] /= norm;
+        if (!input) {
+            throw std::runtime_error(
+                "Failed to read quantized vector payload"
+            );
+        }
+
+        for (const int8_t value : index.embeddings_) {
+            if (value == std::numeric_limits<int8_t>::min()) {
+                throw std::runtime_error(
+                    "Quantized vector payload contains invalid -128 value"
+                );
+            }
+        }
+    } else {
+        // Backward-compatible V1 conversion.
+        // Read one float32 vector at a time so the old matrix is
+        // never duplicated as a full float32 heap allocation.
+        std::vector<float> row(index.dimensions_);
+
+        for (std::size_t i = 0; i < count; ++i) {
+            input.read(
+                reinterpret_cast<char*>(row.data()),
+                static_cast<std::streamsize>(
+                    row.size() * sizeof(float)
+                )
+            );
+
+            if (!input) {
+                throw std::runtime_error(
+                    "Failed to read legacy float32 vector payload"
+                );
+            }
+
+            std::vector<int8_t> quantized;
+
+            try {
+                quantized = normalize_and_quantize(
+                    row.data(),
+                    row.size()
+                );
+            } catch (const std::exception& error) {
+                throw std::runtime_error(
+                    std::string("Invalid legacy vector at row ") +
+                    std::to_string(i) + ": " + error.what()
+                );
+            }
+
+            std::copy(
+                quantized.begin(),
+                quantized.end(),
+                index.embeddings_.begin() +
+                    static_cast<std::ptrdiff_t>(
+                        i * index.dimensions_
+                    )
+            );
         }
     }
 
@@ -407,4 +524,3 @@ std::size_t VectorIndex::dimensions() const {
 }
 
 } // namespace atlas
-
