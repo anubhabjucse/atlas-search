@@ -23,6 +23,13 @@ class AtlasSearch {
         this.process = null;
         this.readline = null;
         this.pending = null;
+        this.queue = Promise.resolve();
+    }
+
+    enqueue(task) {
+        const run = this.queue.then(task, task);
+        this.queue = run.catch(() => {});
+        return run;
     }
 
     start() {
@@ -160,7 +167,11 @@ class AtlasSearch {
         }
     }
 
-    search(
+    search(query, options = {}) {
+        return this.enqueue(() => this.runSearch(query, options));
+    }
+
+    runSearch(
         query,
         {
             limit = 10,
@@ -201,7 +212,11 @@ class AtlasSearch {
         );
     }
 
-    semanticSearch(
+    semanticSearch(embedding, options = {}) {
+        return this.enqueue(() => this.runSemanticSearch(embedding, options));
+    }
+
+    runSemanticSearch(
         embedding,
         {
             limit = 10
