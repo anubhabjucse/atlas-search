@@ -1,14 +1,25 @@
+
 #include "atlas/vector_index.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cerrno>
+#include <cstring>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <limits>
-#include <queue>
 #include <stdexcept>
 #include <vector>
+#include <memory>
+#include <string>
+
+#if defined(__unix__) || defined(__APPLE__)
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace atlas {
 namespace {
@@ -255,32 +266,16 @@ std::vector<VectorSearchResult> VectorIndex::search(
 
     top_k = std::min(top_k, document_ids_.size());
 
-    // Keep only the best top_k results while scoring every document.
-    // The heap's top is the worst currently retained result, so a new
-    // candidate replaces it only when the candidate ranks higher.
-    const auto ranks_better = [](const VectorSearchResult& lhs,
-                                 const VectorSearchResult& rhs) {
-        if (lhs.score != rhs.score) {
-            return lhs.score > rhs.score;
-        }
-        return lhs.document_id < rhs.document_id;
-    };
-
-    const auto heap_compare = [&ranks_better](
-        const VectorSearchResult& lhs,
-        const VectorSearchResult& rhs) {
-        return ranks_better(lhs, rhs);
-    };
-
-    std::priority_queue<
-        VectorSearchResult,
-        std::vector<VectorSearchResult>,
-        decltype(heap_compare)
-    > best(heap_compare);
+    std::vector<VectorSearchResult> results;
+    results.reserve(document_ids_.size());
 
     for (std::size_t i = 0; i < document_ids_.size(); ++i) {
+        const int8_t* embedding_data = mapped_embeddings_
+            ? mapped_embeddings_
+            : embeddings_.data();
+
         const int8_t* document_embedding =
-            embeddings_.data() + i * dimensions_;
+            embedding_data + i * dimensions_;
 
         const float similarity =
             dot_product_quantized(
@@ -289,27 +284,43 @@ std::vector<VectorSearchResult> VectorIndex::search(
                 dimensions_
             ) / query_norm;
 
-        const VectorSearchResult candidate{
+        results.push_back({
             document_ids_[i],
             similarity
-        };
+        });
+    }
 
-        if (best.size() < top_k) {
-            best.push(candidate);
-        } else if (ranks_better(candidate, best.top())) {
-            best.pop();
-            best.push(candidate);
+    if (results.size() > top_k) {
+        std::nth_element(
+            results.begin(),
+            results.begin() + top_k,
+            results.end(),
+            [](const VectorSearchResult& lhs,
+               const VectorSearchResult& rhs) {
+                if (lhs.score != rhs.score) {
+                    return lhs.score > rhs.score;
+                }
+
+                return lhs.document_id < rhs.document_id;
+            }
+        );
+
+        results.resize(top_k);
+    }
+
+    std::sort(
+        results.begin(),
+        results.end(),
+        [](const VectorSearchResult& lhs,
+           const VectorSearchResult& rhs) {
+            if (lhs.score != rhs.score) {
+                return lhs.score > rhs.score;
+            }
+
+            return lhs.document_id < rhs.document_id;
         }
-    }
+    );
 
-    std::vector<VectorSearchResult> results;
-    results.reserve(best.size());
-    while (!best.empty()) {
-        results.push_back(best.top());
-        best.pop();
-    }
-
-    std::sort(results.begin(), results.end(), ranks_better);
     return results;
 }
 
@@ -387,28 +398,35 @@ void VectorIndex::save(const std::string& path) const {
 }
 
 VectorIndex VectorIndex::load(const std::string& path) {
-    std::ifstream input(path, std::ios::binary);
+    const uint64_t file_size = std::filesystem::file_size(path);
 
-    if (!input) {
+    if (file_size < kHeaderSize) {
         throw std::runtime_error(
-            "Failed to open vector index: " + path
+            "Vector index file is smaller than its header"
         );
     }
 
-    const uint64_t file_size =
-        std::filesystem::file_size(path);
-
     VectorIndexHeader header{};
 
-    input.read(
-        reinterpret_cast<char*>(&header),
-        sizeof(header)
-    );
+    {
+        std::ifstream input(path, std::ios::binary);
 
-    if (!input) {
-        throw std::runtime_error(
-            "Failed to read vector index header"
+        if (!input) {
+            throw std::runtime_error(
+                "Failed to open vector index: " + path
+            );
+        }
+
+        input.read(
+            reinterpret_cast<char*>(&header),
+            sizeof(header)
         );
+
+        if (!input) {
+            throw std::runtime_error(
+                "Failed to read vector index header"
+            );
+        }
     }
 
     validate_header(header, file_size);
@@ -419,8 +437,7 @@ VectorIndex VectorIndex::load(const std::string& path) {
     const std::size_t count =
         static_cast<std::size_t>(header.document_count);
 
-    if (count > 0 &&
-        index.dimensions_ >
+    if (count > 0 && index.dimensions_ >
             std::numeric_limits<std::size_t>::max() / count) {
         throw std::runtime_error(
             "Vector index allocation size overflows"
@@ -429,12 +446,115 @@ VectorIndex VectorIndex::load(const std::string& path) {
 
     index.document_ids_.resize(count);
 
+    const uint64_t ids_bytes_u64 =
+        header.document_count * sizeof(uint32_t);
+
+    const std::size_t ids_bytes =
+        static_cast<std::size_t>(ids_bytes_u64);
+
+    const uint64_t payload_offset_u64 =
+        kHeaderSize + ids_bytes_u64;
+
+#if defined(__unix__) || defined(__APPLE__)
+    // V2 is already quantized to one byte/component. Map it read-only so the
+    // embedding matrix does not need a second heap allocation at startup.
+    if (header.version == 2 && file_size > 0) {
+        if (file_size >
+            static_cast<uint64_t>(
+                std::numeric_limits<std::size_t>::max())) {
+            throw std::runtime_error(
+                "Vector index file exceeds mmap platform limits"
+            );
+        }
+
+        const int fd = ::open(path.c_str(), O_RDONLY);
+
+        if (fd < 0) {
+            throw std::runtime_error(
+                "Failed to open vector index for mmap: " + path
+            );
+        }
+
+        void* address = ::mmap(
+            nullptr,
+            static_cast<std::size_t>(file_size),
+            PROT_READ,
+            MAP_PRIVATE,
+            fd,
+            0
+        );
+
+        const int saved_errno = errno;
+        ::close(fd);
+
+        if (address == MAP_FAILED) {
+            throw std::runtime_error(
+                "Failed to mmap vector index: " +
+                std::string(std::strerror(saved_errno))
+            );
+        }
+
+        index.mapping_owner_ = std::shared_ptr<void>(
+            address,
+            [file_size](void* ptr) {
+                if (ptr && ptr != MAP_FAILED) {
+                    ::munmap(
+                        ptr,
+                        static_cast<std::size_t>(file_size)
+                    );
+                }
+            }
+        );
+
+        const auto* bytes =
+            static_cast<const unsigned char*>(address);
+
+        if (ids_bytes != 0) {
+            std::memcpy(
+                index.document_ids_.data(),
+                bytes + kHeaderSize,
+                ids_bytes
+            );
+        }
+
+        index.mapped_embeddings_ =
+            reinterpret_cast<const int8_t*>(
+                bytes +
+                static_cast<std::size_t>(payload_offset_u64)
+            );
+
+        const std::size_t component_count =
+            count * index.dimensions_;
+
+        for (std::size_t i = 0; i < component_count; ++i) {
+            if (index.mapped_embeddings_[i] ==
+                std::numeric_limits<int8_t>::min()) {
+                throw std::runtime_error(
+                    "Quantized vector payload contains invalid -128 value"
+                );
+            }
+        }
+
+        return index;
+    }
+#endif
+
+    // Portable fallback and legacy V1 reader. On non-POSIX platforms V2 is
+    // loaded into owned memory; V1 floats are converted one row at a time.
+    std::ifstream input(path, std::ios::binary);
+
+    if (!input) {
+        throw std::runtime_error(
+            "Failed to open vector index: " + path
+        );
+    }
+
+    input.seekg(static_cast<std::streamoff>(kHeaderSize));
+
     if (!index.document_ids_.empty()) {
         input.read(
             reinterpret_cast<char*>(index.document_ids_.data()),
-            static_cast<std::streamsize>(
-                index.document_ids_.size() * sizeof(uint32_t)
-            )
+            static_cast<std::streamsize>(ids_bytes)
         );
     }
 
@@ -453,9 +573,7 @@ VectorIndex VectorIndex::load(const std::string& path) {
         if (!index.embeddings_.empty()) {
             input.read(
                 reinterpret_cast<char*>(index.embeddings_.data()),
-                static_cast<std::streamsize>(
-                    index.embeddings_.size()
-                )
+                static_cast<std::streamsize>(index.embeddings_.size())
             );
         }
 
@@ -473,9 +591,6 @@ VectorIndex VectorIndex::load(const std::string& path) {
             }
         }
     } else {
-        // Backward-compatible V1 conversion.
-        // Read one float32 vector at a time so the old matrix is
-        // never duplicated as a full float32 heap allocation.
         std::vector<float> row(index.dimensions_);
 
         for (std::size_t i = 0; i < count; ++i) {

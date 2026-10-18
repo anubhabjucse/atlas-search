@@ -1,8 +1,10 @@
+
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <memory>
 #include <vector>
 
 namespace atlas {
@@ -46,7 +48,11 @@ private:
 
     // Row-major, one signed byte per dimension.
     // Each document vector is normalized before quantization.
+    // V2 loaded indexes can point directly into a read-only mmap. The
+    // shared owner keeps the mapping alive across VectorIndex moves/copies.
     std::vector<int8_t> embeddings_;
+    std::shared_ptr<void> mapping_owner_;
+    const int8_t* mapped_embeddings_ = nullptr;
 };
 
 } // namespace atlas
