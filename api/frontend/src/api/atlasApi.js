@@ -83,4 +83,57 @@ export async function fetchDocument(documentId) {
   return parseJsonOrThrow(response, "Atlas couldn't load that document.");
 }
 
+
+/**
+ * POST /api/ai-survey
+ * Vercel serverless function: article fetching + Gemini stay off the client.
+ */
+export async function fetchAiSurvey(query, results) {
+  let response;
+  try {
+    response = await fetch("/api/ai-survey", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        query,
+        documents: (results || []).slice(0, 5).map((result) => {
+          const document = result?.document || {};
+          return {
+            id: result?.documentId ?? document?._id,
+            headline: document?.headline,
+            description: document?.short_description,
+            url: document?.link,
+          };
+        }),
+      }),
+    });
+  } catch (cause) {
+    throw new AtlasApiError(
+      "Couldn't reach the AI survey service. Check that the backend is running.",
+      { cause }
+    );
+  }
+
+  let body;
+  try {
+    body = JSON.parse(await response.text());
+  } catch (cause) {
+    body = null;
+  }
+  if (!response.ok) {
+    const message = typeof body?.error === "string"
+      ? body.error
+      : response.status === 404
+        ? "The backend running on port 3000 does not have the AI survey route yet. Restart or rebuild the backend to load the updated endpoint."
+        : `AI summary unavailable (HTTP ${response.status}).`;
+    throw new AtlasApiError(message, { status: response.status });
+  }
+  if (typeof body?.summary !== "string" || !body.summary.trim()) {
+    throw new AtlasApiError("The AI survey service returned an invalid response.", {
+      status: response.status,
+    });
+  }
+  return body;
+}
+
 export { AtlasApiError };

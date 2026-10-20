@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SearchBar from "./components/SearchBar.jsx";
 import SearchResults from "./components/SearchResults.jsx";
 import SearchStats from "./components/SearchStats.jsx";
@@ -6,7 +6,8 @@ import LoadingResults from "./components/LoadingResults.jsx";
 import EmptyState from "./components/EmptyState.jsx";
 import ErrorState from "./components/ErrorState.jsx";
 import DocumentViewer from "./components/DocumentViewer.jsx";
-import { runSearch, fetchHealth, AtlasApiError } from "./api/atlasApi.js";
+import AiSurvey from "./components/AiSurvey.jsx";
+import { runSearch, fetchHealth, fetchAiSurvey, AtlasApiError } from "./api/atlasApi.js";
 
 const DEFAULT_LIMIT = 10;
 
@@ -20,6 +21,11 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const [openResult, setOpenResult] = useState(null);
   const [backendDown, setBackendDown] = useState(false);
+  const [surveyStatus, setSurveyStatus] = useState("idle");
+  const [surveySummary, setSurveySummary] = useState("");
+  const [surveySources, setSurveySources] = useState([]);
+  const [surveyError, setSurveyError] = useState("");
+  const surveyRequestId = useRef(0);
 
   // Optional, non-blocking status check. Never gates the search UI.
   useEffect(() => {
@@ -37,16 +43,41 @@ export default function App() {
   }, []);
 
   async function performSearch(searchTerm) {
+    const requestId = ++surveyRequestId.current;
     setStatus("searching");
     setSubmittedQuery(searchTerm);
     setErrorMessage("");
+    setSurveyStatus("idle");
+    setSurveySummary("");
+    setSurveySources([]);
+    setSurveyError("");
 
     try {
       const data = await runSearch(searchTerm, DEFAULT_LIMIT);
-      setResults(data.results || []);
+      if (requestId !== surveyRequestId.current) return;
+      const searchResults = data.results || [];
+      setResults(searchResults);
       setStats(data.stats || null);
       setStatus("success");
+
+      if (searchResults.length > 0) {
+        setSurveyStatus("loading");
+        fetchAiSurvey(searchTerm, searchResults)
+          .then((survey) => {
+            if (requestId !== surveyRequestId.current) return;
+            setSurveySummary(survey.summary);
+            setSurveySources(survey.sources || []);
+            setSurveyStatus("ready");
+          })
+          .catch((error) => {
+            if (requestId !== surveyRequestId.current) return;
+            console.warn("Atlas AI Survey unavailable:", error);
+            setSurveyError(error.message || "AI summary unavailable.");
+            setSurveyStatus("unavailable");
+          });
+      }
     } catch (error) {
+      if (requestId !== surveyRequestId.current) return;
       const message =
         error instanceof AtlasApiError
           ? error.message
@@ -54,6 +85,26 @@ export default function App() {
       console.error("Atlas search failed:", error);
       setErrorMessage(message);
       setStatus("error");
+      setSurveyStatus("idle");
+    }
+  }
+
+  async function retryAiSurvey() {
+    if (!submittedQuery || !results.length) return;
+    const requestId = ++surveyRequestId.current;
+    setSurveyStatus("loading");
+    setSurveyError("");
+    try {
+      const survey = await fetchAiSurvey(submittedQuery, results);
+      if (requestId !== surveyRequestId.current) return;
+      setSurveySummary(survey.summary);
+      setSurveySources(survey.sources || []);
+      setSurveyStatus("ready");
+    } catch (error) {
+      if (requestId !== surveyRequestId.current) return;
+      console.warn("Atlas AI Survey unavailable:", error);
+      setSurveyError(error.message || "AI summary unavailable.");
+      setSurveyStatus("unavailable");
     }
   }
 
@@ -62,6 +113,11 @@ export default function App() {
   }
 
   function handleReset() {
+    surveyRequestId.current += 1;
+    setSurveyStatus("idle");
+    setSurveySummary("");
+    setSurveySources([]);
+    setSurveyError("");
     setQuery("");
     setSubmittedQuery("");
     setStatus("idle");
@@ -133,6 +189,7 @@ export default function App() {
 
             {status === "success" && results.length > 0 && (
               <>
+                <AiSurvey status={surveyStatus} summary={surveySummary} sources={surveySources} errorMessage={surveyError} onRetry={retryAiSurvey} />
                 <SearchResults results={results} onOpenResult={setOpenResult} />
                 <SearchStats stats={stats} />
               </>
@@ -141,7 +198,7 @@ export default function App() {
         )}
       </main>
 
-      <footer className="app-footer">Atlas V4 · lexical search over the news archive</footer>
+      <footer className="app-footer">Atlas · search the news archive</footer>
 
       {openResult && (
         <DocumentViewer result={openResult} onClose={() => setOpenResult(null)} />

@@ -12,6 +12,8 @@ services:
       NODE_ENV: production
 
       MONGODB_URI: ${MONGODB_URI}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
 
       ATLAS_WORKER_PATH: /atlas/build/atlas_search_worker
       ATLAS_INDEX_PATH: /atlas/data/index/news.atlas

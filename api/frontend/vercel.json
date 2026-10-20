@@ -1,8 +1,16 @@
 {
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://atlas-search-1.onrender.com/api/:path*"
+      "source": "/api/health",
+      "destination": "https://atlas-search-1.onrender.com/api/health"
+    },
+    {
+      "source": "/api/search",
+      "destination": "https://atlas-search-1.onrender.com/api/search"
+    },
+    {
+      "source": "/api/documents/:id",
+      "destination": "https://atlas-search-1.onrender.com/api/documents/:id"
     }
   ]
 }

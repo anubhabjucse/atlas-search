@@ -62,9 +62,7 @@ COPY api/database_adapter/package.json \
 RUN cd api/database_adapter && npm ci --omit=dev \
     && cd ../backend && npm ci --omit=dev
 
-COPY api/backend/src ./api/backend/src
 COPY api/database_adapter/index.js ./api/database_adapter/index.js
-COPY api/database_adapter/src ./api/database_adapter/src
 
 # ============================================================
 # Lexical index + compact INT8 vector index
@@ -83,6 +81,11 @@ RUN curl -fL --retry 3 \
 RUN curl -fL --retry 3 \
     -o /models/embeddinggemma-300M-Q8_0.gguf \
     https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf
+
+COPY api/backend/src ./api/backend/src
+COPY api/database_adapter/src ./api/database_adapter/src
+COPY api/frontend/package.json ./api/frontend/package.json
+COPY api/frontend/api ./api/frontend/api
 
 # ============================================================
 # Runtime configuration

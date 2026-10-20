@@ -25,6 +25,18 @@ const app = express();
 
 app.use(express.json());
 
+app.post("/api/ai-survey", async (req, res) => {
+    try {
+        const { default: handler } = await import("../../frontend/api/ai-survey.js");
+        await handler(req, res);
+    } catch (error) {
+        console.error("AI survey route failed:", error);
+        res.status(500)
+            .setHeader("Cache-Control", "no-store");
+        res.json({ error: "AI survey service could not be loaded" });
+    }
+});
+
 const database =
     new MongoDBDatabase(
         mongodbUri
