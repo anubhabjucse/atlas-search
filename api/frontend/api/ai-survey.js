@@ -1,7 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 const surveyCache = new Map();
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 100;
@@ -211,8 +211,40 @@ export default async function handler(req, res) {
     }
     if (!response.ok) {
       const status = response.status;
-      console.error("Gemini survey request failed with status", status);
-      return send(res, status === 429 ? 429 : 502, { error: "AI summary unavailable" });
+      let providerMessage = "";
+      try {
+        const providerError = await response.json();
+        providerMessage = typeof providerError?.error?.message === "string"
+          ? providerError.error.message.slice(0, 500)
+          : "";
+      } catch {
+        providerMessage = "";
+      }
+      console.error("Gemini survey request failed:", {
+        status,
+        model: MODEL,
+        message: providerMessage || "No provider error message returned"
+      });
+
+      if (status === 401 || status === 403) {
+        return send(res, 502, {
+          error: "Gemini rejected the API key or project permissions. Check GEMINI_API_KEY and Gemini API access in Vercel."
+        });
+      }
+      if (status === 404) {
+        return send(res, 502, {
+          error: `Gemini model "${MODEL}" was not found. Set GEMINI_MODEL to a supported text-generation model, such as gemini-2.5-flash, in Vercel.`
+        });
+      }
+      if (status === 429) {
+        return send(res, 429, { error: "Gemini rate limit or quota reached. Check the Gemini project quota and try again." });
+      }
+      if (status >= 500) {
+        return send(res, 502, { error: "Gemini is temporarily unavailable. Try the AI summary again shortly." });
+      }
+      return send(res, 502, {
+        error: `Gemini rejected the survey request (HTTP ${status}). Check the configured model and API request.`
+      });
     }
     const payload = await response.json();
     const answer = payload?.candidates?.[0]?.content?.parts
